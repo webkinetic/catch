@@ -66,12 +66,11 @@ class GeminiCaptureStructurer @Inject constructor(
                 Content(role = "user", parts = listOf(Part(text = request.transcript)))
             ),
             tools = listOf(Tool(functionDeclarations = listOf(fileCaptureDeclaration))),
-            toolConfig = ToolConfig(
-                functionCallingConfig = FunctionCallingConfig(
-                    mode = "ANY",
-                    allowedFunctionNames = listOf(FUNCTION_NAME)
-                )
-            )
+            // allowedFunctionNames isn't a documented field on FunctionCallingConfig
+            // (confirmed against Google's API reference) — it was never needed
+            // anyway, since only one function is ever declared. mode = "ANY"
+            // alone already forces that one call.
+            toolConfig = ToolConfig(functionCallingConfig = FunctionCallingConfig(mode = "ANY"))
         )
 
     private fun buildSystemPrompt(request: StructureRequest): String = buildString {

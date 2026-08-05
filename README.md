@@ -33,10 +33,18 @@ Built so far:
     later launch goes straight to Inbox
 - **Inbox screen** (`ui/InboxScreen.kt`) — lists every capture live from
   Room with a state pill, confidence, and a FAB that also triggers capture
+- **Capture detail screen** (`ui/CaptureDetailScreen.kt`) — tap any capture
+  to see the full structured breakdown (title, body, due date, project,
+  tags, people, confidence) alongside the raw transcript, with actions that
+  match its state:
+  - `AWAITING_CONFIRM` → **Confirm** (files it — currently means "accepted
+    into the internal inbox", the brief's zero-setup default destination)
+    or **Discard**
+  - `FAILED` → **Retry** (re-enqueues `StructureCaptureWorker` from scratch)
+  - Always available → **Delete**, with a one-tap confirmation dialog
 
-Not built yet: the confirm screen (captures currently sit at
-`AWAITING_CONFIRM` with no way to act on them), external destinations, undo.
-Per the build brief, phases land one at a time.
+Not built yet: external destinations (Calendar/Obsidian/task managers) and
+undo-after-confirm. Per the build brief, phases land one at a time.
 
 **On the API key:** get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 — the in-app onboarding screen links straight there. Google has issued keys
@@ -70,6 +78,5 @@ relying on the CI build above.
 
 ## Next phase
 
-The confirm screen is the logical next step — per the brief, "this is the
-app, spend disproportionate time here." Without it, `AWAITING_CONFIRM`
-captures just sit in the inbox with no way to file or discard them.
+External destinations (a real Calendar write is the obvious first one — no
+OAuth needed, just `CalendarContract`) and undo-after-confirm.

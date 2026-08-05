@@ -1,6 +1,7 @@
 package com.catchapp.app.data.local
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
@@ -15,8 +16,14 @@ interface CaptureDao {
     @Update
     suspend fun update(capture: CaptureEntity)
 
+    @Delete
+    suspend fun delete(capture: CaptureEntity)
+
     @Query("SELECT * FROM captures WHERE id = :id")
     suspend fun getById(id: Long): CaptureEntity?
+
+    @Query("SELECT * FROM captures WHERE id = :id")
+    fun observeById(id: Long): Flow<CaptureEntity?>
 
     @Query("SELECT * FROM captures ORDER BY capturedAt DESC")
     fun observeAll(): Flow<List<CaptureEntity>>

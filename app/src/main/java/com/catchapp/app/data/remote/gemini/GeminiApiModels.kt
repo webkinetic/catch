@@ -73,8 +73,7 @@ data class ToolConfig(
 /** mode = "ANY" forces a function call every time — Gemini's equivalent of Claude's forced tool_choice. */
 @Serializable
 data class FunctionCallingConfig(
-    val mode: String = "ANY",
-    val allowedFunctionNames: List<String>
+    val mode: String = "ANY"
 )
 
 @Serializable

@@ -41,6 +41,7 @@ fun InboxScreen(
     onCaptureClick: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTutorial: () -> Unit,
+    onOpenCapture: (Long) -> Unit,
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val captures by viewModel.captures.collectAsState()
@@ -76,7 +77,7 @@ fun InboxScreen(
                     .padding(padding)
             ) {
                 items(captures, key = { it.id }) { capture ->
-                    CaptureRow(capture)
+                    CaptureRow(capture, onClick = { onOpenCapture(capture.id) })
                 }
             }
         }
@@ -99,8 +100,11 @@ private fun EmptyState(padding: PaddingValues) {
 }
 
 @Composable
-private fun CaptureRow(capture: CaptureEntity) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun CaptureRow(capture: CaptureEntity, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = capture.title ?: capture.rawTranscript,
@@ -147,7 +151,7 @@ private fun CaptureRow(capture: CaptureEntity) {
 }
 
 @Composable
-private fun StatePill(state: CaptureState) {
+fun StatePill(state: CaptureState) {
     val (label, color) = when (state) {
         CaptureState.CAPTURED -> "Captured" to MaterialTheme.colorScheme.onSurfaceVariant
         CaptureState.STRUCTURING -> "Structuring…" to MaterialTheme.colorScheme.secondary

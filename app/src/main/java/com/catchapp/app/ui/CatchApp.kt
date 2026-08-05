@@ -5,9 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.catchapp.app.capture.CaptureActivity
 import com.catchapp.app.ui.onboarding.OnboardingScreen
 import com.catchapp.app.ui.onboarding.OnboardingViewModel
@@ -17,12 +19,16 @@ private object Routes {
     const val TUTORIAL = "tutorial"
     const val ONBOARDING = "onboarding"
     const val INBOX = "inbox"
+    const val CAPTURE_DETAIL = "capture/{captureId}"
+
+    fun captureDetail(id: Long) = "capture/$id"
 }
 
 /**
  * The single-Activity Compose nav graph. First run: Tutorial -> Onboarding ->
  * Inbox. Every later launch skips straight to Inbox, which can jump back
- * into either screen via its settings/help icons.
+ * into either screen via its settings/help icons, or into a capture's detail
+ * screen to confirm/discard/delete/retry it.
  */
 @Composable
 fun CatchApp() {
@@ -64,8 +70,16 @@ fun CatchApp() {
             InboxScreen(
                 onCaptureClick = { context.startActivity(Intent(context, CaptureActivity::class.java)) },
                 onOpenSettings = { navController.navigate(Routes.ONBOARDING) },
-                onOpenTutorial = { navController.navigate(Routes.TUTORIAL) }
+                onOpenTutorial = { navController.navigate(Routes.TUTORIAL) },
+                onOpenCapture = { id -> navController.navigate(Routes.captureDetail(id)) }
             )
+        }
+
+        composable(
+            route = Routes.CAPTURE_DETAIL,
+            arguments = listOf(navArgument("captureId") { type = NavType.LongType })
+        ) {
+            CaptureDetailScreen(onBack = { navController.popBackStack() })
         }
     }
 }
