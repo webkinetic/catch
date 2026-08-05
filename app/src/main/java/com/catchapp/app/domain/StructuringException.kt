@@ -13,6 +13,6 @@ sealed class StructuringException(message: String) : Exception(message) {
     data object NoFunctionCallReturned :
         StructuringException("Gemini did not return a file_capture call.")
 
-    data class NetworkError(val cause: Throwable) :
+    data class NetworkError(override val cause: Throwable) :
         StructuringException("Structuring request failed.")
 }
