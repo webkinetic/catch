@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "com.catch.app"
+    namespace = "com.catchapp.app"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.catch.app"
+        applicationId = "com.catchapp.app"
         minSdk = 29
         targetSdk = 35
         versionCode = 1
