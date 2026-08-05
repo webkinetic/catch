@@ -14,6 +14,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -38,12 +39,26 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun InboxScreen(
     onCaptureClick: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenTutorial: () -> Unit,
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val captures by viewModel.captures.collectAsState()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Catch") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Catch") },
+                actions = {
+                    IconButton(onClick = onOpenTutorial) {
+                        Text("?", style = MaterialTheme.typography.titleLarge)
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Text("⚙", style = MaterialTheme.typography.titleLarge)
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = onCaptureClick) {
                 Icon(painterResource(R.drawable.ic_tile_mic), contentDescription = "Capture")
