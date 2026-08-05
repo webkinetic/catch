@@ -39,6 +39,8 @@ class CaptureActivity : ComponentActivity() {
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var uiState by mutableStateOf<CaptureUiState>(CaptureUiState.RequestingPermission)
+    private var usingOnDeviceRecognizer = false
+    private var hasFallenBackToStandardRecognizer = false
 
     private val requestAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -70,16 +72,29 @@ class CaptureActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
-    private fun startListening() {
+    /**
+     * Tries the on-device recognizer first (offline, per hard rule #5), but
+     * its endpointing is a different engine that often just ignores the
+     * SPEECH_INPUT_* silence extras below — on some devices that means it
+     * decides "done" almost instantly and reports ERROR_NO_MATCH before the
+     * user has really started talking. If that happens, [onError] below
+     * falls back to the standard recognizer once, which reliably honours
+     * these extras.
+     */
+    private fun startListening(useOnDevice: Boolean = true) {
         uiState = CaptureUiState.Listening(partialText = "")
+        usingOnDeviceRecognizer = useOnDevice
 
-        val recognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        val recognizer = if (useOnDevice &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
         ) {
             SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
         } else {
+            usingOnDeviceRecognizer = false
             SpeechRecognizer.createSpeechRecognizer(this)
         }
+        speechRecognizer?.destroy()
         speechRecognizer = recognizer
         recognizer.setRecognitionListener(listener)
 
@@ -88,7 +103,10 @@ class CaptureActivity : ComponentActivity() {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             // Default silence timeout (~2s) cuts off rambling capture. Bumped
             // per the brief so thinking pauses don't truncate the thought.
+            // All three matter — engines that honour any of these tend to
+            // require all three set consistently, not just the first two.
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500)
         }
         recognizer.startListening(intent)
@@ -143,6 +161,18 @@ class CaptureActivity : ComponentActivity() {
         }
 
         override fun onError(error: Int) {
+            val isEndpointingError = error == SpeechRecognizer.ERROR_NO_MATCH ||
+                error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+
+            if (usingOnDeviceRecognizer && isEndpointingError && !hasFallenBackToStandardRecognizer) {
+                // The on-device engine gave up almost immediately — likely
+                // ignoring the silence extras entirely on this device. Retry
+                // once with the standard recognizer before showing an error.
+                hasFallenBackToStandardRecognizer = true
+                startListening(useOnDevice = false)
+                return
+            }
+
             uiState = CaptureUiState.Error(describeError(error))
             finishAfterDelay()
         }
