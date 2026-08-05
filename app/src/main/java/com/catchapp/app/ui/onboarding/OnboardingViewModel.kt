@@ -12,6 +12,8 @@ class OnboardingViewModel @Inject constructor(
 
     fun hasKey(): Boolean = apiKeyStore.hasKey()
 
+    fun currentKey(): String = apiKeyStore.getKey().orEmpty()
+
     fun saveKey(key: String) {
         val trimmed = key.trim()
         if (trimmed.isNotEmpty()) apiKeyStore.setKey(trimmed)

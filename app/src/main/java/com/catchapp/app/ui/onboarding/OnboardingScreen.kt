@@ -37,7 +37,7 @@ fun OnboardingScreen(
     onSkip: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
-    var key by remember { mutableStateOf("") }
+    var key by remember { mutableStateOf(viewModel.currentKey()) }
     val context = LocalContext.current
 
     Scaffold { padding ->

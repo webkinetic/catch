@@ -39,7 +39,6 @@ class CaptureActivity : ComponentActivity() {
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var uiState by mutableStateOf<CaptureUiState>(CaptureUiState.RequestingPermission)
-    private var usingOnDeviceRecognizer = false
     private var hasFallenBackToStandardRecognizer = false
 
     private val requestAudioPermission =
@@ -73,17 +72,16 @@ class CaptureActivity : ComponentActivity() {
             PackageManager.PERMISSION_GRANTED
 
     /**
-     * Tries the on-device recognizer first (offline, per hard rule #5), but
-     * its endpointing is a different engine that often just ignores the
-     * SPEECH_INPUT_* silence extras below — on some devices that means it
-     * decides "done" almost instantly and reports ERROR_NO_MATCH before the
-     * user has really started talking. If that happens, [onError] below
-     * falls back to the standard recognizer once, which reliably honours
-     * these extras.
+     * Tries the on-device recognizer first (offline, per hard rule #5).
+     * Whichever engine ends up running, a well-documented Android quirk can
+     * still bite: partial results stream real text throughout, but the
+     * *final* pass rejects it and reports ERROR_NO_MATCH anyway — the two
+     * passes aren't always the same model. [onEndOfSpeech] nudging the
+     * engine to finalize, and [onError] retrying once, both exist to work
+     * around that rather than trust either pass blindly.
      */
     private fun startListening(useOnDevice: Boolean = true) {
         uiState = CaptureUiState.Listening(partialText = "")
-        usingOnDeviceRecognizer = useOnDevice
 
         val recognizer = if (useOnDevice &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -91,7 +89,6 @@ class CaptureActivity : ComponentActivity() {
         ) {
             SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
         } else {
-            usingOnDeviceRecognizer = false
             SpeechRecognizer.createSpeechRecognizer(this)
         }
         speechRecognizer?.destroy()
@@ -101,12 +98,16 @@ class CaptureActivity : ComponentActivity() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // Hints the engine to resolve on-device rather than doing a
+            // cloud round-trip for the final pass — a likely source of the
+            // partial-good/final-rejected mismatch on the standard recognizer.
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             // Default silence timeout (~2s) cuts off rambling capture. Bumped
             // per the brief so thinking pauses don't truncate the thought.
-            // All three matter — engines that honour any of these tend to
-            // require all three set consistently, not just the first two.
+            // Possibly-complete is intentionally shorter than complete — it's
+            // a soft "maybe done" hint, not another hard cutoff.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500)
         }
         recognizer.startListening(intent)
@@ -117,7 +118,13 @@ class CaptureActivity : ComponentActivity() {
         override fun onBeginningOfSpeech() = Unit
         override fun onRmsChanged(rmsdB: Float) = Unit
         override fun onBufferReceived(buffer: ByteArray?) = Unit
-        override fun onEndOfSpeech() = Unit
+        override fun onEndOfSpeech() {
+            // Some engines will happily keep listening past this point and
+            // only reject the final transcript later; explicitly telling it
+            // to stop here prompts it to finalize against what it already
+            // has, instead of whatever produces the partial/final mismatch.
+            speechRecognizer?.stopListening()
+        }
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
         override fun onPartialResults(partialResults: Bundle) {
@@ -164,10 +171,12 @@ class CaptureActivity : ComponentActivity() {
             val isEndpointingError = error == SpeechRecognizer.ERROR_NO_MATCH ||
                 error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
 
-            if (usingOnDeviceRecognizer && isEndpointingError && !hasFallenBackToStandardRecognizer) {
-                // The on-device engine gave up almost immediately — likely
-                // ignoring the silence extras entirely on this device. Retry
-                // once with the standard recognizer before showing an error.
+            // Retry once regardless of which engine just failed — on-device
+            // falls back to standard; standard just gets a fresh attempt.
+            // (A first version of this only retried when on-device had run,
+            // which meant devices that go straight to the standard engine
+            // never got a retry at all.)
+            if (isEndpointingError && !hasFallenBackToStandardRecognizer) {
                 hasFallenBackToStandardRecognizer = true
                 startListening(useOnDevice = false)
                 return
