@@ -40,6 +40,7 @@ class CaptureActivity : ComponentActivity() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var uiState by mutableStateOf<CaptureUiState>(CaptureUiState.RequestingPermission)
     private var hasFallenBackToStandardRecognizer = false
+    private var latestPartialText: String = ""
 
     private val requestAudioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -82,6 +83,7 @@ class CaptureActivity : ComponentActivity() {
      */
     private fun startListening(useOnDevice: Boolean = true) {
         uiState = CaptureUiState.Listening(partialText = "")
+        latestPartialText = ""
 
         val recognizer = if (useOnDevice &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -98,10 +100,12 @@ class CaptureActivity : ComponentActivity() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            // Hints the engine to resolve on-device rather than doing a
-            // cloud round-trip for the final pass — a likely source of the
-            // partial-good/final-rejected mismatch on the standard recognizer.
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            // Deliberately NOT setting EXTRA_PREFER_OFFLINE: on this device
+            // partial results are reliably accurate but the final pass keeps
+            // rejecting them (ERROR_NO_MATCH) — forcing an offline-preferred
+            // final pass looked like it made that worse, not better. See
+            // onError below: rather than keep chasing a reliable final pass,
+            // we just trust the last good partial when the final one fails.
             // Default silence timeout (~2s) cuts off rambling capture. Bumped
             // per the brief so thinking pauses don't truncate the thought.
             // Possibly-complete is intentionally shorter than complete — it's
@@ -132,50 +136,36 @@ class CaptureActivity : ComponentActivity() {
                 .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
                 .orEmpty()
+            if (text.isNotBlank()) latestPartialText = text
             uiState = CaptureUiState.Listening(partialText = text)
         }
 
         override fun onResults(results: Bundle) {
-            // Measurement point for hard rule #4: everything from here to
-            // finish() is local DB + UI, never network.
-            val speechEndedAtMs = SystemClock.elapsedRealtime()
-
             val transcript = results
                 .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
                 ?.trim()
                 .orEmpty()
 
-            if (transcript.isEmpty()) {
-                uiState = CaptureUiState.Error("Didn't catch that.")
-                finishAfterDelay()
-                return
-            }
-
-            uiState = CaptureUiState.Saving
-
-            lifecycleScope.launch {
-                captureRepository.captureTranscript(transcript)
-
-                if (BuildConfig.DEBUG) {
-                    val elapsedMs = SystemClock.elapsedRealtime() - speechEndedAtMs
-                    // Elapsed time only — never the transcript itself (hard rule #2).
-                    Log.d(PERF_TAG, "speech-end-to-dismiss: ${elapsedMs}ms")
-                }
-
-                finish()
-            }
+            // The final pass has been unreliable on some devices — falls
+            // back to the last good partial rather than discarding it.
+            completeCapture(transcript.ifBlank { latestPartialText })
         }
 
         override fun onError(error: Int) {
             val isEndpointingError = error == SpeechRecognizer.ERROR_NO_MATCH ||
                 error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
 
-            // Retry once regardless of which engine just failed — on-device
-            // falls back to standard; standard just gets a fresh attempt.
-            // (A first version of this only retried when on-device had run,
-            // which meant devices that go straight to the standard engine
-            // never got a retry at all.)
+            if (isEndpointingError && latestPartialText.isNotBlank()) {
+                // We heard real words throughout (partials proved that) —
+                // trust them instead of the final pass that just rejected them.
+                completeCapture(latestPartialText)
+                return
+            }
+
+            // No partial text at all yet — genuinely nothing heard, or the
+            // engine failed before ever producing one. Retry once with
+            // whichever engine hasn't been tried this capture.
             if (isEndpointingError && !hasFallenBackToStandardRecognizer) {
                 hasFallenBackToStandardRecognizer = true
                 startListening(useOnDevice = false)
@@ -184,6 +174,35 @@ class CaptureActivity : ComponentActivity() {
 
             uiState = CaptureUiState.Error(describeError(error))
             finishAfterDelay()
+        }
+    }
+
+    /**
+     * Measurement point for hard rule #4: everything from here to finish()
+     * is local DB + UI, never network. Shared by both the normal final-pass
+     * result and the partial-text fallback above — either way, this is the
+     * one place a capture actually gets written.
+     */
+    private fun completeCapture(transcript: String) {
+        if (transcript.isBlank()) {
+            uiState = CaptureUiState.Error("Didn't catch that.")
+            finishAfterDelay()
+            return
+        }
+
+        val speechEndedAtMs = SystemClock.elapsedRealtime()
+        uiState = CaptureUiState.Saving
+
+        lifecycleScope.launch {
+            captureRepository.captureTranscript(transcript)
+
+            if (BuildConfig.DEBUG) {
+                val elapsedMs = SystemClock.elapsedRealtime() - speechEndedAtMs
+                // Elapsed time only — never the transcript itself (hard rule #2).
+                Log.d(PERF_TAG, "speech-end-to-dismiss: ${elapsedMs}ms")
+            }
+
+            finish()
         }
     }
 
