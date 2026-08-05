@@ -1,0 +1,6 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base window theme. Compose content itself is themed by CatchTheme
+         (ui/theme/Theme.kt) — this just sets the window background/status
+         bar before the first Compose frame draws. -->
+    <style name="Theme.Catch" parent="android:Theme.DeviceDefault.DayNight.NoActionBar" />
+</resources>
