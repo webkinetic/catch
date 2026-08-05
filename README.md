@@ -11,8 +11,11 @@ Built so far:
 - Room database (`CatchDatabase`) with `CaptureEntity`, its `CaptureState`
   state machine, `CaptureDao`, and type converters
 - `CaptureStructurer` — the AI structuring layer, running on **Gemini**
-  (`gemini-2.5-flash`, free tier via a Google AI Studio key), behind an
-  interface so the provider can change later without touching call sites
+  (`gemini-3.6-flash`, free tier via a Google AI Studio key), behind an
+  interface so the provider can change later without touching call sites.
+  Also exposes `verifyKey()` — a minimal, tool-free ping used by the
+  onboarding screen's **Test key** button so you can confirm a key actually
+  works without waiting on a full voice capture
 - **Capture trigger + on-device STT** (`capture/`): QS tile
   (`CaptureTileService`) + transparent trampoline (`CaptureActivity`) that
   listens via `SpeechRecognizer`, writes `CAPTURED` to Room the instant
@@ -37,14 +40,17 @@ Built so far:
   to see the full structured breakdown (title, body, due date, project,
   tags, people, confidence) alongside the raw transcript, with actions that
   match its state:
-  - `AWAITING_CONFIRM` → **Confirm** (files it — currently means "accepted
-    into the internal inbox", the brief's zero-setup default destination)
-    or **Discard**
-  - `FAILED` → **Retry** (re-enqueues `StructureCaptureWorker` from scratch)
+  - `AWAITING_CONFIRM` → **Confirm** or **Discard**. Confirm routes by kind:
+    `EVENT` captures go to the device's **Google Calendar** (direct
+    `CalendarContract` insert, no OAuth — requests `WRITE_CALENDAR` right
+    before writing); everything else files into the internal inbox
+  - `FAILED` → **Retry** (re-enqueues `StructureCaptureWorker` from scratch —
+    useful for anything that failed before a bug fix landed, without
+    re-recording)
   - Always available → **Delete**, with a one-tap confirmation dialog
 
-Not built yet: external destinations (Calendar/Obsidian/task managers) and
-undo-after-confirm. Per the build brief, phases land one at a time.
+Not built yet: Obsidian/task-manager destinations, undo-after-confirm. Per
+the build brief, phases land one at a time.
 
 **On the API key:** get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 — the in-app onboarding screen links straight there. Google has issued keys
@@ -78,5 +84,4 @@ relying on the CI build above.
 
 ## Next phase
 
-External destinations (a real Calendar write is the obvious first one — no
-OAuth needed, just `CalendarContract`) and undo-after-confirm.
+Obsidian/markdown export or a task-manager destination, and undo-after-confirm.

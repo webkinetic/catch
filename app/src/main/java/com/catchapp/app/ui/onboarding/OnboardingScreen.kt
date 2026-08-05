@@ -4,12 +4,15 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -17,10 +20,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -39,6 +44,7 @@ fun OnboardingScreen(
 ) {
     var key by remember { mutableStateOf(viewModel.currentKey()) }
     val context = LocalContext.current
+    val testState by viewModel.testState.collectAsState()
 
     Scaffold { padding ->
         Column(
@@ -80,6 +86,35 @@ fun OnboardingScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.testKey(key) },
+                    enabled = key.isNotBlank() && testState !is KeyTestState.Testing
+                ) {
+                    Text("Test key")
+                }
+
+                when (val state = testState) {
+                    is KeyTestState.Testing ->
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+
+                    is KeyTestState.Result -> Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (state.success) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        }
+                    )
+
+                    KeyTestState.Idle -> Unit
+                }
+            }
 
             Text(
                 "Stored encrypted on this device only (Android Keystore) — " +

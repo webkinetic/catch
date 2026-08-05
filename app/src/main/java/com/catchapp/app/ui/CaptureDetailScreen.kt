@@ -1,5 +1,8 @@
 package com.catchapp.app.ui
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.catchapp.app.data.local.CaptureKind
 import com.catchapp.app.data.local.CaptureState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +42,20 @@ fun CaptureDetailScreen(
 ) {
     val capture by viewModel.capture.collectAsState()
     var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // Requesting an already-granted permission is a harmless no-op — the
+    // launcher just calls back with granted=true immediately, no dialog
+    // shown. So this can run unconditionally on every EVENT confirm rather
+    // than needing a separate "do we already have it" branch.
+    val requestCalendarPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        // Outcome (granted or denied) surfaces via the capture's state pill —
+        // writeEvent() checks the permission itself and fails cleanly with a
+        // readable reason either way.
+        viewModel.confirm()
+        onBack()
+    }
 
     Scaffold(
         topBar = {
@@ -104,9 +122,16 @@ fun CaptureDetailScreen(
             when (current.state) {
                 CaptureState.AWAITING_CONFIRM -> {
                     Button(
-                        onClick = { viewModel.confirm(); onBack() },
+                        onClick = {
+                            if (current.kind == CaptureKind.EVENT) {
+                                requestCalendarPermission.launch(Manifest.permission.WRITE_CALENDAR)
+                            } else {
+                                viewModel.confirm()
+                                onBack()
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Confirm") }
+                    ) { Text(if (current.kind == CaptureKind.EVENT) "Confirm — add to Calendar" else "Confirm") }
                     OutlinedButton(
                         onClick = { viewModel.discard(); onBack() },
                         modifier = Modifier.fillMaxWidth()

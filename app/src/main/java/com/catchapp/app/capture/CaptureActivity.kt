@@ -82,7 +82,11 @@ class CaptureActivity : ComponentActivity() {
      * around that rather than trust either pass blindly.
      */
     private fun startListening(useOnDevice: Boolean = true) {
-        uiState = CaptureUiState.Listening(partialText = "")
+        // Not "Listening" yet — the mic isn't actually capturing until
+        // onReadyForSpeech fires below. Showing "Listening" too early is
+        // part of why the very start of an utterance gets clipped: the user
+        // sees the cue and starts talking before the mic is really live.
+        uiState = CaptureUiState.Preparing
         latestPartialText = ""
 
         val recognizer = if (useOnDevice &&
@@ -106,19 +110,22 @@ class CaptureActivity : ComponentActivity() {
             // final pass looked like it made that worse, not better. See
             // onError below: rather than keep chasing a reliable final pass,
             // we just trust the last good partial when the final one fails.
-            // Default silence timeout (~2s) cuts off rambling capture. Bumped
-            // per the brief so thinking pauses don't truncate the thought.
-            // Possibly-complete is intentionally shorter than complete — it's
-            // a soft "maybe done" hint, not another hard cutoff.
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500)
+            // Default silence timeout (~2s) cuts off rambling capture — bumped
+            // generously since these extras are only partially honoured
+            // across devices (confirmed via testing). Possibly-complete stays
+            // shorter than complete — it's a soft "maybe done" hint, not
+            // another hard cutoff.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 6000)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000)
         }
         recognizer.startListening(intent)
     }
 
     private val listener = object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) = Unit
+        override fun onReadyForSpeech(params: Bundle?) {
+            uiState = CaptureUiState.Listening(partialText = "")
+        }
         override fun onBeginningOfSpeech() = Unit
         override fun onRmsChanged(rmsdB: Float) = Unit
         override fun onBufferReceived(buffer: ByteArray?) = Unit

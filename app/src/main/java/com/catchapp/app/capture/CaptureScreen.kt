@@ -34,6 +34,17 @@ fun CaptureScreen(state: CaptureUiState) {
                 when (s) {
                     is CaptureUiState.RequestingPermission -> StatusText("Waiting for microphone permission…")
 
+                    is CaptureUiState.Preparing -> Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = "Get ready…",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+
                     is CaptureUiState.Listening -> Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(20.dp),

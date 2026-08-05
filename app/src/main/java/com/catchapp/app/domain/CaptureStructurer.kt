@@ -8,4 +8,11 @@ package com.catchapp.app.domain
  */
 interface CaptureStructurer {
     suspend fun structure(request: StructureRequest): Result<StructuredCapture>
+
+    /**
+     * A cheap, direct check that [apiKey] actually works — takes the key as
+     * a parameter (rather than reading ApiKeyStore) so the onboarding screen
+     * can test what's currently typed before it's ever saved.
+     */
+    suspend fun verifyKey(apiKey: String): Result<Unit>
 }

@@ -8,8 +8,10 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkRequest
 import androidx.work.workDataOf
+import com.catchapp.app.data.calendar.CalendarWriter
 import com.catchapp.app.data.local.CaptureDao
 import com.catchapp.app.data.local.CaptureEntity
+import com.catchapp.app.data.local.CaptureKind
 import com.catchapp.app.data.local.CaptureState
 import com.catchapp.app.work.StructureCaptureWorker
 import kotlinx.coroutines.flow.Flow
@@ -26,7 +28,8 @@ import javax.inject.Singleton
 @Singleton
 class CaptureRepository @Inject constructor(
     private val dao: CaptureDao,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val calendarWriter: CalendarWriter
 ) {
     suspend fun captureTranscript(transcript: String): Long {
         val id = dao.insert(CaptureEntity(rawTranscript = transcript, capturedAt = System.currentTimeMillis()))
@@ -38,11 +41,47 @@ class CaptureRepository @Inject constructor(
 
     fun observeById(id: Long): Flow<CaptureEntity?> = dao.observeById(id)
 
-    /** AWAITING_CONFIRM -> FILED. No external destinations exist yet, so
-     * "confirm" currently means accepting it into the internal inbox — the
-     * brief's own "always available, zero setup, ship this first" destination. */
+    /**
+     * AWAITING_CONFIRM -> FILED. EVENT-kind captures route to the device
+     * calendar (CalendarWriter — no OAuth, direct CalendarContract insert,
+     * per the brief). Everything else files into the internal inbox, the
+     * brief's "always available, zero setup, ship this first" destination.
+     */
     suspend fun confirmCapture(id: Long) {
         val capture = dao.getById(id) ?: return
+
+        if (capture.kind == CaptureKind.EVENT) {
+            dao.update(capture.copy(state = CaptureState.FILING, filingAt = System.currentTimeMillis()))
+
+            val result = calendarWriter.writeEvent(
+                title = capture.title ?: capture.rawTranscript,
+                description = capture.body,
+                dueIso = capture.dueIso
+            )
+
+            result.fold(
+                onSuccess = {
+                    dao.update(
+                        capture.copy(
+                            state = CaptureState.FILED,
+                            filedAt = System.currentTimeMillis(),
+                            destinationId = "google_calendar"
+                        )
+                    )
+                },
+                onFailure = { error ->
+                    dao.update(
+                        capture.copy(
+                            state = CaptureState.FAILED,
+                            failedAt = System.currentTimeMillis(),
+                            errorMessage = error.message ?: "Couldn't add to Calendar."
+                        )
+                    )
+                }
+            )
+            return
+        }
+
         dao.update(
             capture.copy(
                 state = CaptureState.FILED,

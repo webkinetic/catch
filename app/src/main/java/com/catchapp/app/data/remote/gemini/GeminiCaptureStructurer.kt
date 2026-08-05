@@ -3,6 +3,7 @@ package com.catchapp.app.data.remote.gemini
 import com.catchapp.app.data.local.CaptureKind
 import com.catchapp.app.data.remote.ApiKeyStore
 import com.catchapp.app.domain.CaptureStructurer
+import com.catchapp.app.domain.KeyVerificationException
 import com.catchapp.app.domain.StructureRequest
 import com.catchapp.app.domain.StructuredCapture
 import com.catchapp.app.domain.StructuringException
@@ -12,16 +13,19 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 /**
- * gemini-2.5-flash: cheap/fast structured-extraction model, free tier
- * available via a Google AI Studio key. Bump to a Pro-tier model only if a
- * future feature needs deeper reasoning than "classify + extract fields".
+ * gemini-3.6-flash: Google's current flagship fast/cheap tier (gemini-2.5-flash
+ * is superseded, per Google's own docs) — free tier available via a Google AI
+ * Studio key. Bump to a Pro-tier model only if a future feature needs deeper
+ * reasoning than "classify + extract fields".
  */
-private const val MODEL = "gemini-2.5-flash"
+private const val MODEL = "gemini-3.6-flash"
 private const val ENDPOINT =
     "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent"
 private const val FUNCTION_NAME = "file_capture"
@@ -56,6 +60,33 @@ class GeminiCaptureStructurer @Inject constructor(
             Result.success(args.toStructuredCapture())
         } catch (e: Exception) {
             Result.failure(StructuringException.NetworkError(e))
+        }
+    }
+
+    override suspend fun verifyKey(apiKey: String): Result<Unit> {
+        return try {
+            // Deliberately minimal — no system prompt, no tools, no schema.
+            // Just proves this exact key can reach this exact model.
+            val response = httpClient.post(ENDPOINT) {
+                header("x-goog-api-key", apiKey)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    GenerateContentRequest(
+                        contents = listOf(Content(role = "user", parts = listOf(Part(text = "Reply with just: OK"))))
+                    )
+                )
+            }
+
+            when {
+                response.status.isSuccess() -> Result.success(Unit)
+                response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden ->
+                    Result.failure(KeyVerificationException.InvalidKey)
+                response.status == HttpStatusCode.NotFound ->
+                    Result.failure(KeyVerificationException.ModelUnavailable)
+                else -> Result.failure(KeyVerificationException.Other(response.status.value))
+            }
+        } catch (e: Exception) {
+            Result.failure(KeyVerificationException.NetworkError(e))
         }
     }
 

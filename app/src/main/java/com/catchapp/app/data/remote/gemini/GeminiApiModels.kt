@@ -15,8 +15,11 @@ import kotlinx.serialization.Serializable
 data class GenerateContentRequest(
     val systemInstruction: Content? = null,
     val contents: List<Content>,
-    val tools: List<Tool>,
-    val toolConfig: ToolConfig
+    // Both genuinely optional per Google's API reference — omitted entirely
+    // for the plain-text key-verification ping, which needs no function
+    // calling at all.
+    val tools: List<Tool>? = null,
+    val toolConfig: ToolConfig? = null
 )
 
 @Serializable
